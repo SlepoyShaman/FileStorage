@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>{{ .title }}</title>
+
+  <link rel="icon" type="image/png" sizes="256x256" href="{{ .htmlVars.favicon }}">
+
+  <!-- Preload critical fonts for optimal performance -->
+  <link rel="preload" href="{{ .htmlVars.staticURL }}/fonts/roboto-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ .htmlVars.staticURL }}/fonts/roboto-medium-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ .htmlVars.staticURL }}/fonts/roboto-bold-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ .htmlVars.staticURL }}/fonts/material-icons.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ .htmlVars.staticURL }}/fonts/material-symbols-outlined.woff2" as="font" type="font/woff2" crossorigin>
+
+  <!-- Add to home screen for Android and modern mobile browsers -->
+  <link rel="manifest" id="manifestPlaceholder" crossorigin="use-credentials">
+  <meta name="theme-color" content="{{ .htmlVars.color }}">
+
+  <!-- Add to home screen for Safari on iOS/iPadOS -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="assets">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ .htmlVars.appIcon }}">
+
+  <!-- Add to home screen for Windows -->
+  <meta name="msapplication-TileImage" content="{{ .htmlVars.winIcon }}">
+  <meta name="msapplication-TileColor" content="{{ .htmlVars.color }}">
+
+  <meta name="description" content="{{ .htmlVars.description }}">
+  <link rel="canonical" href="https://github.com/gtsteffaniak/filebrowser">
+  <link rel="canonical" href="https://github.com/quantumx-apps">
+  <link rel="canonical" href="https://filebrowserquantum.com">
+
+  <!-- Injected variables come from backend server -->
+  <script>
+    window.globalVars = {{ .globalVars }};
+    window.shareVars = {{ .shareVars }};
+    var dynamicManifest = {
+      "name": window.globalVars.name || 'FileBrowser Quantum',
+      "icons": [
+        {
+          "src": window.location.origin + "{{ .htmlVars.staticURL }}/img/icons/android-chrome-256x256.png",
+          "sizes": "512x512",
+          "type": "image/png"
+        },
+        {
+          "src": window.location.origin + "{{ .htmlVars.staticURL }}/img/icons/android-chrome-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        },
+      ],
+      "start_url": window.location.origin + "{{ .htmlVars.baseURL }}",
+      "display": "standalone",
+      "background_color": "#ffffff",
+      "theme_color": "{{ .htmlVars.color }}"
+    }
+
+    const stringManifest = JSON.stringify(dynamicManifest);
+    const blob = new Blob([stringManifest], { type: 'application/json' });
+    const manifestURL = URL.createObjectURL(blob);
+    document.querySelector('#manifestPlaceholder').setAttribute('href', manifestURL);
+  </script>
+
+  <style>
+    /* Basic Styles */
+    :root {
+      --background: {{ .htmlVars.lightBackground }};
+      --alt-background: #ddd;
+      --surfacePrimary: gray;
+      --surfaceSecondary: lightgray;
+      --textPrimary: #546e7a;
+      --textSecondary: gray;
+      --iconBackground: #dddddd;
+      --activeWhiteIcon: gray;
+    }
+    .dark-mode {
+      --background: {{ .htmlVars.darkBackground }};
+      --alt-background: #283136;
+      --surfacePrimary: #20292F;
+      --surfaceSecondary: #3A4147;
+      --divider: rgba(255, 255, 255, 0.12);
+      --textPrimary: rgba(255, 255, 255, 0.87);
+      --textSecondary: rgba(255, 255, 255, 0.6);
+      --iconBackground: #1e1f20;
+      --activeWhiteIcon: white;
+    }
+
+    #loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #fff;
+      z-index: 9999;
+      transition: .1s ease opacity;
+      -webkit-transition: .1s ease opacity;
+    }
+
+    #loading.done {
+      opacity: 0;
+    }
+
+    #loading .spinner {
+      width: 70px;
+      text-align: center;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      -webkit-transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%);
+    }
+
+    #loading .spinner>div {
+      width: 18px;
+      height: 18px;
+      background-color: #333;
+      border-radius: 100%;
+      display: inline-block;
+      -webkit-animation: sk-bouncedelay 1.4s infinite ease-in-out both;
+      animation: sk-bouncedelay 1.4s infinite ease-in-out both;
+    }
+
+    #loading .spinner .bounce1 {
+      -webkit-animation-delay: -0.32s;
+      animation-delay: -0.32s;
+    }
+
+    #loading .spinner .bounce2 {
+      -webkit-animation-delay: -0.16s;
+      animation-delay: -0.16s;
+    }
+
+    @-webkit-keyframes sk-bouncedelay {
+
+      0%,
+      80%,
+      100% {
+        -webkit-transform: scale(0)
+      }
+
+      40% {
+        -webkit-transform: scale(1.0)
+      }
+    }
+
+    @keyframes sk-bouncedelay {
+
+      0%,
+      80%,
+      100% {
+        -webkit-transform: scale(0);
+        transform: scale(0);
+      }
+
+      40% {
+        -webkit-transform: scale(1.0);
+        transform: scale(1.0);
+      }
+    }
+    {{ .htmlVars.customCSS }}
+    {{ .htmlVars.userSelectedTheme }}
+  </style>
+</head>
+
+<body>
+  <div id="app"></div>
+
+  {{ if .htmlVars.darkMode -}}
+  <div id="loading" class="dark-mode">
+    <div class="spinner">
+      <div class="bounce1"></div>
+      <div class="bounce2"></div>
+      <div class="bounce3"></div>
+    </div>
+  </div>
+  {{ else }}
+  <div id="loading">
+    <div class="spinner">
+      <div class="bounce1"></div>
+      <div class="bounce2"></div>
+      <div class="bounce3"></div>
+    </div>
+  </div>
+  {{end}}
+  <script type="module" src="/src/main.ts"></script>
+
+</body>
+
+</html>
