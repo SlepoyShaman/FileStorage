@@ -65,32 +65,25 @@ export default {
     if (this.isTiff) {
       this.decodeTiff(this.src);
     } else {
-      this.$refs.imgex.src = this.src;  
+      this.$refs.imgex.src = this.src;
     }
-    
     let container = this.$refs.container;
-    
-    this.classList.forEach((className) => {
-      container.classList.add(className);
-    });
-    
+    this.classList.forEach((className) => container.classList.add(className));
     if (getComputedStyle(container).width === "0px") {
       container.style.width = "100%";
     }
     if (getComputedStyle(container).height === "0px") {
       container.style.height = "100%";
     }
-    
     window.addEventListener("resize", this.onResize);
-    document.addEventListener("click", this.onResize);
   },
   beforeUnmount() {
     window.removeEventListener("resize", this.onResize);
-    window.removeEventListener("click", this.onResize);
+    document.removeEventListener("mouseup", this.onMouseUp);
   },
   computed: {
     isLoaded() {
-      return ("preview-img" in state.loading);
+      return !("preview-img" in state.loading);
     },
   },
   watch: {
@@ -99,19 +92,16 @@ export default {
         mutations.setLoading("preview-img", false);
         return;
       }
-      
       this.isTiff = this.checkIfTiff(this.src);
       if (this.isTiff) {
         this.decodeTiff(this.src);
       } else {
-        this.$refs.imgex.src = this.src;  
+        this.$refs.imgex.src = this.src;
       }
-      
       this.scale = 1;
       this.position.relative = { x: 0, y: 0 };
       this.showSpinner = true;
       this.resetSwipeTracking();
-      
     },
   },
   methods: {
