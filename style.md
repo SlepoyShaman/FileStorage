@@ -652,3 +652,151 @@ result, err := db.Exec("INSERT INTO users (name) VALUES ($1)", "Alice")
 - **Безопасность:** Всегда использовать подготовленные выражения (placeholder'ы) с параметрами, а не конкатенацию строк, чтобы защититься от SQL-инъекций.
 - **Обработка ошибок:** Всегда проверять ошибки, которые возвращают функции работы с БД.
 - **Закрытие соединений:** Не забывать закрывать `*sql.Rows` после использования с помощью `defer rows.Close()`
+
+### **Давыдов Денис Лабораторная работа 3**
+
+## Обработка ошибок
+
+### Обрабатывайте ошибки только один раз
+
+Каждая ошибка должна быть обработана ровно один раз. Логирование ошибки - это обработка. Возврат ошибки - это обработка. Не выполняйте обе операции одновременно.
+
+<table> <thead><tr><th>Плохо</th><th>Хорошо</th></tr></thead> 
+<tbody> 
+  <tr><td>
+
+  ```golang
+  func processUser(id string) error {
+    user, err := getUser(id)
+    if err != nil {
+        log.Printf("Ошибка получения пользователя: %v", err)
+        return err // Двойная обработка!
+    }
+    return nil
+  }
+  ```
+  </td><td>
+
+  ```go
+  func processUser(id string) error {
+      user, err := getUser(id)
+      if err != nil {
+          return fmt.Errorf("получить пользователя %s: %w", id, err)
+      }
+      return nil
+  }
+
+  // На верхнем уровне
+  func main() {
+      if err := processUser("123"); err != nil {
+          log.Printf("Ошибка: %v", err)
+      }
+  }
+  ```
+  </td></tr> 
+</tbody></table>
+
+### Используйте контекст при оборачивании ошибок
+
+Добавляйте контекст к ошибкам, но избегайте избыточных фраз вроде "failed to", "unable to".
+
+<table> <thead><tr><th>Плохо</th><th>Хорошо</th></tr></thead> <tbody> <tr><td>
+
+```go
+if err := saveConfig(cfg); err != nil {
+    return fmt.Errorf("failed to save config: %w", err)
+}
+```
+</td><td>
+
+```go
+if err := saveConfig(cfg); err != nil {
+    return fmt.Errorf("сохранить конфигурацию: %w", err)
+}
+```
+</td></tr> </tbody></table>
+
+
+### Типы ошибок и их применение
+
+#### Статические ошибки
+Используйте `errors.New` для статических строковых ошибок. Экспортируйте их как переменные, если вызывающая сторона должна обрабатывать их специальным образом.
+
+```go
+// Пакетные ошибки
+var (
+    ErrUserNotFound = errors.New("пользователь не найден")
+    ErrInvalidToken = errors.New("неверный токен")
+)
+
+func GetUser(id string) (*User, error) {
+    if id == "" {
+        return nil, ErrUserNotFound
+    }
+    // ...
+}
+```
+
+#### Динамические ошибки
+Используйте `fmt.Errorf` для ошибок с динамическим содержимым или создавайте кастомные типы ошибок, если вызывающая сторона должна их проверять.
+
+<table> <thead><tr><th>Без проверки типа</th><th>С проверкой типа</th></tr></thead> <tbody> <tr><td>
+
+```go
+func ValidateEmail(email string) error {
+    if !strings.Contains(email, "@") {
+        return fmt.Errorf("email %q имеет неверный формат", email)
+    }
+    return nil
+}
+```
+</td><td>
+
+```go
+type ValidationError struct {
+    Field   string
+    Value   string
+    Message string
+}
+
+func (e *ValidationError) Error() string {
+    return fmt.Sprintf("поле %s: %s (значение: %q)", 
+        e.Field, e.Message, e.Value)
+}
+
+func ValidateEmail(email string) error {
+    if !strings.Contains(email, "@") {
+        return &ValidationError{
+            Field:   "email",
+            Value:   email,
+            Message: "должен содержать @",
+        }
+    }
+    return nil
+}
+```
+</td></tr> </tbody></table>
+
+#### Проверка типов ошибок
+Используйте `errors.Is` и `errors.As` для проверки типов ошибок.
+
+```go
+func HandleUserRequest(id string) error {
+    user, err := getUser(id)
+    if err != nil {
+        if errors.Is(err, ErrUserNotFound) {
+            // Специальная обработка для ненайденного пользователя
+            return createDefaultUser(id)
+        }
+        var valErr *ValidationError
+        if errors.As(err, &valErr) {
+            // Специальная обработка для ошибок валидации
+            return fmt.Errorf("неверный запрос: %s", valErr.Message)
+        }
+        // Все остальные ошибки
+        return fmt.Errorf("обработать запрос: %w", err)
+    }
+    // ...
+}
+```
+
