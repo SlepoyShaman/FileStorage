@@ -85,6 +85,7 @@ func FileInfoFaster(opts utils.FileOptions, access *access.Storage) (*iteminfo.E
 	if isDir && opts.Metadata {
 		startTime := time.Now()
 		metadataCount := 0
+		ctx := context.Background()
 
 		for i := range response.Files {
 			fileItem := &response.Files[i]
@@ -94,9 +95,11 @@ func FileInfoFaster(opts utils.FileOptions, access *access.Storage) (*iteminfo.E
 			isMediaFile := isItemAudio || isItemVideo
 
 			if isMediaFile {
-				itemRealPath, _, _ := index.GetRealPath(opts.Path, fileItem.Name)
-
-				ctx := context.Background()
+				itemRealPath, _, err := index.GetRealPath(opts.Path, fileItem.Name)
+				if err != nil {
+					slog.Debug("failed to get real path for file: "+fileItem.Name, err)
+					continue
+				}
 
 				if isItemAudio {
 					shouldExtractArt := opts.AlbumArt || opts.Content
@@ -119,12 +122,10 @@ func FileInfoFaster(opts utils.FileOptions, access *access.Storage) (*iteminfo.E
 			}
 		}
 
-		elapsed := time.Since(startTime)
 		if metadataCount > 0 {
+			elapsed := time.Since(startTime)
 			slog.Debug("Extracted metadata for %d audio/video files in %v (avg: %v per file)",
 				metadataCount, elapsed, elapsed/time.Duration(metadataCount))
-		} else {
-			slog.Debug("No metadata extracted in %v", elapsed)
 		}
 	}
 
