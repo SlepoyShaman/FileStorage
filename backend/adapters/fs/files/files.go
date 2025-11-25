@@ -82,32 +82,34 @@ func FileInfoFaster(opts utils.FileOptions, access *access.Storage) (*iteminfo.E
 		}
 	}
 
-	// For directories, populate metadata for audio/video files ONLY if explicitly requested
-	// This avoids expensive ffprobe calls on every directory listing
 	if isDir && opts.Metadata {
 		startTime := time.Now()
 		metadataCount := 0
 
 		for i := range response.Files {
 			fileItem := &response.Files[i]
+
 			isItemAudio := strings.HasPrefix(fileItem.Type, "audio")
 			isItemVideo := strings.HasPrefix(fileItem.Type, "video")
+			isMediaFile := isItemAudio || isItemVideo
 
-			if isItemAudio || isItemVideo {
-				// Get the real path for this file
+			if isMediaFile {
 				itemRealPath, _, _ := index.GetRealPath(opts.Path, fileItem.Name)
 
-				// Extract metadata for audio files (without album art for performance)
+				ctx := context.Background()
+
 				if isItemAudio {
-					err := extractAudioMetadata(context.Background(), fileItem, itemRealPath, opts.AlbumArt || opts.Content, opts.Metadata)
+					shouldExtractArt := opts.AlbumArt || opts.Content
+					err := extractAudioMetadata(ctx, fileItem, itemRealPath, shouldExtractArt, opts.Metadata)
 					if err != nil {
 						slog.Debug("failed to extract metadata for file: "+fileItem.Name, err)
 					} else {
 						metadataCount++
 					}
-				} else if isItemVideo {
-					// Extract duration for video files
-					err := extractVideoMetadata(context.Background(), fileItem, itemRealPath)
+				}
+
+				if isItemVideo {
+					err := extractVideoMetadata(ctx, fileItem, itemRealPath)
 					if err != nil {
 						slog.Debug("failed to extract video metadata for file: "+fileItem.Name, err)
 					} else {
@@ -117,10 +119,12 @@ func FileInfoFaster(opts utils.FileOptions, access *access.Storage) (*iteminfo.E
 			}
 		}
 
+		elapsed := time.Since(startTime)
 		if metadataCount > 0 {
-			elapsed := time.Since(startTime)
 			slog.Debug("Extracted metadata for %d audio/video files in %v (avg: %v per file)",
 				metadataCount, elapsed, elapsed/time.Duration(metadataCount))
+		} else {
+			slog.Debug("No metadata extracted in %v", elapsed)
 		}
 	}
 
