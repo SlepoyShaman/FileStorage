@@ -89,12 +89,10 @@ func FileInfoFaster(opts utils.FileOptions, access *access.Storage) (*iteminfo.E
 
 		for i := range response.Files {
 			fileItem := &response.Files[i]
-
 			isItemAudio := strings.HasPrefix(fileItem.Type, "audio")
 			isItemVideo := strings.HasPrefix(fileItem.Type, "video")
-			isMediaFile := isItemAudio || isItemVideo
 
-			if isMediaFile {
+			if isItemAudio || isItemVideo {
 				itemRealPath, _, err := index.GetRealPath(opts.Path, fileItem.Name)
 				if err != nil {
 					slog.Debug("failed to get real path for file: "+fileItem.Name, err)
@@ -102,16 +100,13 @@ func FileInfoFaster(opts utils.FileOptions, access *access.Storage) (*iteminfo.E
 				}
 
 				if isItemAudio {
-					shouldExtractArt := opts.AlbumArt || opts.Content
-					err := extractAudioMetadata(ctx, fileItem, itemRealPath, shouldExtractArt, opts.Metadata)
+					err := extractAudioMetadata(ctx, fileItem, itemRealPath, opts.AlbumArt || opts.Content, opts.Metadata)
 					if err != nil {
 						slog.Debug("failed to extract metadata for file: "+fileItem.Name, err)
 					} else {
 						metadataCount++
 					}
-				}
-
-				if isItemVideo {
+				} else if isItemVideo {
 					err := extractVideoMetadata(ctx, fileItem, itemRealPath)
 					if err != nil {
 						slog.Debug("failed to extract video metadata for file: "+fileItem.Name, err)
