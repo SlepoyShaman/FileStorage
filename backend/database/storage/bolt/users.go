@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	storm "github.com/asdine/storm/v3"
+	"github.com/gtsteffaniak/go-logger/logger"
 
 	"github.com/SlepoyShaman/FileStorage/backend/adapters/fs/files"
 	"github.com/SlepoyShaman/FileStorage/backend/auth"
@@ -14,7 +15,6 @@ import (
 	"github.com/SlepoyShaman/FileStorage/backend/common/settings"
 	"github.com/SlepoyShaman/FileStorage/backend/common/utils"
 	"github.com/SlepoyShaman/FileStorage/backend/database/users"
-	"github.com/gtsteffaniak/go-logger/logger"
 )
 
 type usersBackend struct {

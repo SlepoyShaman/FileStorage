@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,10 +13,11 @@ import (
 	"time"
 
 	"github.com/SlepoyShaman/FileStorage/adapters/fs/fileutils"
-	"github.com/SlepoyShaman/FileStorage/common/version"
-	"github.com/SlepoyShaman/FileStorage/database/users"
+	"github.com/SlepoyShaman/FileStorage/common/utils"
 	"github.com/go-playground/validator/v10"
 	"github.com/goccy/go-yaml"
+	"github.com/gtsteffaniak/filebrowser/backend/database/users"
+	"github.com/gtsteffaniak/go-logger/logger"
 )
 
 var Config Settings
@@ -29,29 +29,46 @@ const (
 func Initialize(configFile string) {
 	err := loadConfigWithDefaults(configFile, false)
 	if err != nil {
-		slog.Error("unable to load config, waiting 5 seconds before exiting...")
+		logger.Error("unable to load config, waiting 5 seconds before exiting...")
 		time.Sleep(5 * time.Second) // allow sleep time before exiting to give docker/kubernetes time before restarting
-		log.Fatal(err.Error())
+		logger.Fatal(err.Error())
 	}
+	setupLogging()
+	// setup logging first to ensure we log any errors
+	setupEnv()
 	err = ValidateConfig(Config)
 	if err != nil {
 		errmsg := "The provided config file failed validation. "
-		slog.Error(errmsg)
+		errmsg += "If you are seeing this on a config that worked before, "
+		errmsg += "then check the latest releases for breaking changes. "
+		logger.Error(errmsg)
 		time.Sleep(5 * time.Second) // allow sleep time before exiting to give docker/kubernetes time before restarting
-		log.Fatal(err.Error())
+		logger.Fatal(err.Error())
 	}
-	Config.Env.IsPlaywright = os.Getenv("FILEBROWSER_PLAYWRIGHT_TEST") == "true"
-	if Config.Env.IsPlaywright {
-		slog.Warn("Running in playwright test mode. This is not recommended for production.")
-	}
-	// setup logging first to ensure we log any errors
-	setupLogging()
 	setupFs()
+	setupServer()
 	setupAuth(false)
 	setupSources(false)
 	setupUrls()
 	setupFrontend(false)
-	setupVideoPreview()
+	setupMedia()
+}
+
+func setupServer() {
+	if Config.Server.ListenAddress == "" {
+		Config.Server.ListenAddress = "0.0.0.0"
+	}
+}
+
+func setupEnv() {
+	Env.IsPlaywright = os.Getenv("FILEBROWSER_PLAYWRIGHT_TEST") == "true"
+	if Env.IsPlaywright {
+		logger.Warning("Running in playwright test mode. This is not recommended for production.")
+	}
+	Env.IsDevMode = os.Getenv("FILEBROWSER_DEVMODE") == "true"
+	if Env.IsDevMode {
+		logger.Warning("Running in dev mode. This is not recommended for production.")
+	}
 }
 
 func setupFs() {
@@ -71,39 +88,19 @@ func setupFs() {
 	// try writing to cache dir
 	absCacheDir, err := filepath.Abs(Config.Server.CacheDir)
 	if err != nil {
-		slog.Error("error getting absolute path for 'server.cacheDir: %v': %v", Config.Server.CacheDir, err)
+		logger.Errorf("error getting absolute path for 'server.cacheDir: %v': %v", Config.Server.CacheDir, err)
 	}
 	cacheDir := filepath.Join(absCacheDir, "init_test")
 	err = os.MkdirAll(cacheDir, fileutils.PermDir)
 	if err != nil {
-		slog.Error("Unable to write to 'server.cacheDir: %v', please ensure the cache directory is writable: %v", absCacheDir, err)
+		logger.Errorf("Unable to write to 'server.cacheDir: %v', please ensure the cache directory is writable: %v", absCacheDir, err)
 	}
 
 }
 
 func setupFrontend(generate bool) {
-	if Config.Frontend.LoginIcon != "" {
-		// check if file exists
-		if _, err := os.Stat(Config.Frontend.LoginIcon); os.IsNotExist(err) {
-			slog.Warn("login icon file '%v' does not exist", Config.Frontend.LoginIcon)
-			Config.Frontend.LoginIcon = ""
-		} else {
-			// validate image type
-			validExtensions := []string{".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico"}
-			isValid := false
-			lowerPath := strings.ToLower(Config.Frontend.LoginIcon)
-			for _, ext := range validExtensions {
-				if strings.HasSuffix(lowerPath, ext) {
-					isValid = true
-					break
-				}
-			}
-			if !isValid {
-				slog.Warn("login icon file '%v' is not a valid image type (supported: svg, png, jpg, jpeg, gif, webp, ico)", Config.Frontend.LoginIcon)
-				Config.Frontend.LoginIcon = ""
-			}
-		}
-	}
+	// Load login icon configuration at startup
+	loadLoginIcon()
 	if Config.Server.MinSearchLength == 0 {
 		Config.Server.MinSearchLength = 3
 	}
@@ -111,7 +108,6 @@ func setupFrontend(generate bool) {
 		Config.Frontend.ExternalLinks = append(Config.Frontend.ExternalLinks, ExternalLink{
 			Text:  fmt.Sprintf("(%v)", version.Version),
 			Title: version.CommitSHA,
-			Url:   "https://github.com/SlepoyShaman/FileStorage/",
 		})
 		Config.Frontend.ExternalLinks = append(Config.Frontend.ExternalLinks, ExternalLink{
 			Text: "Help",
@@ -127,7 +123,7 @@ func setupFrontend(generate bool) {
 	if Config.Frontend.Styling.CustomCSS != "" {
 		Config.Frontend.Styling.CustomCSSRaw, err = readCustomCSS(Config.Frontend.Styling.CustomCSS)
 		if err != nil {
-			slog.Warn(err.Error())
+			logger.Warning(err.Error())
 		}
 	}
 	Config.Frontend.Styling.CustomThemeOptions = map[string]CustomTheme{}
@@ -159,7 +155,7 @@ func setupFrontend(generate bool) {
 	loadCustomFavicon()
 }
 
-func setupVideoPreview() {
+func setupMedia() {
 	// If VideoPreview is not initialized, initialize with all types enabled
 	if Config.Integrations.Media.Convert.VideoPreview == nil {
 		Config.Integrations.Media.Convert.VideoPreview = make(map[VideoPreviewType]bool)
@@ -197,17 +193,9 @@ func setupVideoPreview() {
 	}
 }
 
-func checkPathExists(realPath string) error {
-	// check path exists
-	if _, err := os.Stat(realPath); os.IsNotExist(err) {
-		return fmt.Errorf("source path %v is currently not available", realPath)
-	}
-	return nil
-}
-
 func setupSources(generate bool) {
 	if len(Config.Server.Sources) == 0 {
-		log.Fatal("There are no `server.sources` configured. If you have `server.root` configured, please update the config and add at least one `server.sources` with a `path` configured.")
+		logger.Fatal("There are no `server.sources` configured. If you have `server.root` configured, please update the config and add at least one `server.sources` with a `path` configured.")
 	} else {
 		for k, source := range Config.Server.Sources {
 			if source.Config.Disabled {
@@ -215,11 +203,11 @@ func setupSources(generate bool) {
 			}
 			realPath, err := filepath.Abs(source.Path)
 			if err != nil {
-				log.Fatalf("error getting real path for source %v: %v", source.Path, err)
+				logger.Fatalf("error getting real path for source %v: %v", source.Path, err)
 			}
-			err = checkPathExists(realPath)
-			if err != nil {
-				slog.Warn("error checking path exists: %v", err)
+			exists := utils.CheckPathExists(realPath)
+			if !exists {
+				logger.Warningf("source path %v is currently not available", realPath)
 			}
 			name := filepath.Base(realPath)
 			if name == "\\" {
@@ -271,7 +259,7 @@ func setupSources(generate bool) {
 			}
 			allSourceNames = append(allSourceNames, source.Name)
 		} else {
-			slog.Warn("skipping source: %v", sourcePathOnly.Path)
+			logger.Warningf("skipping source: %v", sourcePathOnly.Path)
 		}
 	}
 	Config.UserDefaults.DefaultScopes = defaultScopes
@@ -313,15 +301,15 @@ func setupAuth(generate bool) {
 		Config.Auth.AuthMethods = append(Config.Auth.AuthMethods, "oidc")
 	}
 	if Config.Auth.Methods.NoAuth {
-		slog.Warn("Configured with no authentication, this is not recommended.")
+		logger.Warning("Configured with no authentication, this is not recommended.")
 		Config.Auth.AuthMethods = []string{"disabled"}
 	}
 	if Config.Auth.Methods.OidcAuth.Enabled || generate {
 		err := validateOidcAuth()
 		if err != nil && !generate {
-			slog.Fatalf("Error validating OIDC auth: %v", err)
+			logger.Fatalf("Error validating OIDC auth: %v", err)
 		}
-		slog.Info("OIDC Auth configured successfully")
+		logger.Info("OIDC Auth configured successfully")
 	}
 
 	// use password auth as default if no auth methods are set
@@ -344,11 +332,11 @@ func setupLogging() {
 	for _, logConfig := range Config.Server.Logging {
 		// Enable debug logging automatically in dev mode
 		levels := logConfig.Levels
-		if Config.Env.IsDevMode {
-			levels = "info|Warn|error|debug"
+		if os.Getenv("FILEBROWSER_DEVMODE") == "true" {
+			levels = "info|warning|error|debug"
 		}
 
-		logConfig := slog.JsonConfig{
+		logConfig := logger.JsonConfig{
 			Levels:     levels,
 			ApiLevels:  logConfig.ApiLevels,
 			Output:     logConfig.Output,
@@ -357,14 +345,10 @@ func setupLogging() {
 			Json:       logConfig.Json,
 			Structured: false,
 		}
-		err := slog.EnableCompatibilityMode(logConfig)
+		err := logger.EnableCompatibilityMode(logConfig)
 		if err != nil {
-			log.Println("[ERROR] Failed to set up slog:", err)
+			log.Println("[ERROR] Failed to set up logger:", err)
 		}
-	}
-	Config.Env.IsDevMode = os.Getenv("FILEBROWSER_DEVMODE") == "true"
-	if Config.Env.IsDevMode {
-		slog.Warn("Running in dev mode. This is not recommended for production.")
 	}
 }
 
@@ -374,7 +358,7 @@ func loadConfigWithDefaults(configFile string, generate bool) error {
 	// Check if config file exists
 	if _, err := os.Stat(configFile); err != nil {
 		if configFile != "" {
-			slog.Error("could not open config file '%v', using default settings.", configFile)
+			logger.Errorf("could not open config file '%v', using default settings.", configFile)
 		}
 		Config.Server.Sources = []*Source{
 			{
@@ -471,12 +455,12 @@ func validateFilePermission(fl validator.FieldLevel) bool {
 func loadEnvConfig() {
 	adminPassword, ok := os.LookupEnv("FILEBROWSER_ADMIN_PASSWORD")
 	if ok {
-		slog.Info("Using admin password from FILEBROWSER_ADMIN_PASSWORD environment variable")
+		logger.Info("Using admin password from FILEBROWSER_ADMIN_PASSWORD environment variable")
 		Config.Auth.AdminPassword = adminPassword
 	}
 	officeSecret, ok := os.LookupEnv("FILEBROWSER_ONLYOFFICE_SECRET")
 	if ok {
-		slog.Info("Using OnlyOffice secret from FILEBROWSER_ONLYOFFICE_SECRET environment variable")
+		logger.Info("Using OnlyOffice secret from FILEBROWSER_ONLYOFFICE_SECRET environment variable")
 		Config.Integrations.OnlyOffice.Secret = officeSecret
 	}
 
@@ -488,31 +472,31 @@ func loadEnvConfig() {
 	oidcClientId := os.Getenv("FILEBROWSER_OIDC_CLIENT_ID")
 	if oidcClientId != "" {
 		Config.Auth.Methods.OidcAuth.ClientID = oidcClientId
-		slog.Info("Using OIDC Client ID from FILEBROWSER_OIDC_CLIENT_ID environment variable")
+		logger.Info("Using OIDC Client ID from FILEBROWSER_OIDC_CLIENT_ID environment variable")
 	}
 
 	oidcClientSecret := os.Getenv("FILEBROWSER_OIDC_CLIENT_SECRET")
 	if oidcClientSecret != "" {
 		Config.Auth.Methods.OidcAuth.ClientSecret = oidcClientSecret
-		slog.Info("Using OIDC Client Secret from FILEBROWSER_OIDC_CLIENT_SECRET environment variable")
+		logger.Info("Using OIDC Client Secret from FILEBROWSER_OIDC_CLIENT_SECRET environment variable")
 	}
 
 	jwtTokenSecret := os.Getenv("FILEBROWSER_JWT_TOKEN_SECRET")
 	if jwtTokenSecret != "" {
 		Config.Auth.Key = jwtTokenSecret
-		slog.Info("Using JWT Token Secret from FILEBROWSER_JWT_TOKEN_SECRET environment variable")
+		logger.Info("Using JWT Token Secret from FILEBROWSER_JWT_TOKEN_SECRET environment variable")
 	}
 
 	totpSecret := os.Getenv("FILEBROWSER_TOTP_SECRET")
 	if totpSecret != "" {
 		Config.Auth.TotpSecret = totpSecret
-		slog.Info("Using TOTP Secret from FILEBROWSER_TOTP_SECRET environment variable")
+		logger.Info("Using TOTP Secret from FILEBROWSER_TOTP_SECRET environment variable")
 	}
 
 	recaptchaSecret := os.Getenv("FILEBROWSER_RECAPTCHA_SECRET")
 	if recaptchaSecret != "" {
 		Config.Auth.Methods.PasswordAuth.Recaptcha.Secret = recaptchaSecret
-		slog.Info("Using ReCaptcha Secret from FILEBROWSER_RECAPTCHA_SECRET environment variable")
+		logger.Info("Using ReCaptcha Secret from FILEBROWSER_RECAPTCHA_SECRET environment variable")
 	}
 
 }
@@ -534,7 +518,7 @@ func setDefaults(generate bool) Settings {
 		}
 	}
 	if _, err := os.Stat(database); os.IsNotExist(err) {
-		slog.Warn("database file could not be found. If this is unexpected, the default path is `./database.db`, but it can be configured in the config file under `server.database`.")
+		logger.Warning("database file could not be found. If this is unexpected, the default path is `./database.db`, but it can be configured in the config file under `server.database`.")
 	}
 	s := Settings{
 		Server: Server{
@@ -546,6 +530,7 @@ func setDefaults(generate bool) Settings {
 			NameToSource:       map[string]*Source{},
 			MaxArchiveSizeGB:   50,
 			CacheDir:           "tmp",
+			CacheDirCleanup:    boolPtr(true),
 			Filesystem: Filesystem{
 				CreateFilePermission:      "644",
 				CreateDirectoryPermission: "755",
@@ -567,21 +552,32 @@ func setDefaults(generate bool) Settings {
 		},
 
 		UserDefaults: UserDefaults{
-			DisableOnlyOfficeExt: ".md .txt .pdf",
+			DisableOnlyOfficeExt: ".md .txt .pdf .html .xml",
 			StickySidebar:        true,
 			LockPassword:         false,
 			ShowHidden:           false,
-			DarkMode:             true,
+			DarkMode:             boolPtr(true),
 			DisableSettings:      false,
 			ViewMode:             "normal",
 			Locale:               "en",
 			GallerySize:          3,
 			ThemeColor:           "var(--blue)",
-			Permissions: users.Permissions{
-				Modify: false,
-				Share:  false,
-				Admin:  false,
-				Api:    false,
+			Permissions: UserDefaultsPermissions{
+				Modify:   false,
+				Share:    false,
+				Admin:    false,
+				Api:      false,
+				Download: boolPtr(true), // defaults to true
+			},
+			Preview: UserDefaultsPreview{
+				HighQuality:        boolPtr(true),
+				Image:              boolPtr(true),
+				Video:              boolPtr(true),
+				MotionVideoPreview: boolPtr(true),
+				Office:             boolPtr(true),
+				PopUp:              boolPtr(true),
+				AutoplayMedia:      boolPtr(true),
+				Folder:             boolPtr(true),
 			},
 			FileLoading: users.FileLoading{
 				MaxConcurrent: 10,
@@ -603,164 +599,106 @@ func setDefaults(generate bool) Settings {
 	return s
 }
 
-func ConvertToBackendScopes(scopes []users.SourceScope) ([]users.SourceScope, error) {
-	if len(scopes) == 0 {
-		return Config.UserDefaults.DefaultScopes, nil
+// validateCustomImage validates a custom image file path and returns the absolute path or error
+func validateCustomImage(configPath, imageName string, maxSize int64, allowedFormats []string) (absolutePath string, err error) {
+	// Get absolute path
+	absolutePath, err = filepath.Abs(configPath)
+	if err != nil {
+		return "", fmt.Errorf("could not resolve path: %w", err)
 	}
-	newScopes := []users.SourceScope{}
-	for _, scope := range scopes {
 
-		// first check if its already a path name and keep it
-		source, ok := Config.Server.SourceMap[scope.Name]
-		if ok {
-			if scope.Scope == "" {
-				scope.Scope = source.Config.DefaultUserScope
-			}
-			if !strings.HasPrefix(scope.Scope, "/") {
-				scope.Scope = "/" + scope.Scope
-			}
-			if scope.Scope != "/" && strings.HasSuffix(scope.Scope, "/") {
-				scope.Scope = strings.TrimSuffix(scope.Scope, "/")
-			}
-			newScopes = append(newScopes, users.SourceScope{
-				Name:  source.Path, // backend name is path
-				Scope: scope.Scope,
-			})
-			continue
-		}
-
-		// check if its the name of a source and convert it to a path
-		source, ok = Config.Server.NameToSource[scope.Name]
-		if !ok {
-			// source might no longer be configured
-			continue
-		}
-		if scope.Scope == "" {
-			scope.Scope = source.Config.DefaultUserScope
-		}
-		if !strings.HasPrefix(scope.Scope, "/") {
-			scope.Scope = "/" + scope.Scope
-		}
-		if scope.Scope != "/" && strings.HasSuffix(scope.Scope, "/") {
-			scope.Scope = strings.TrimSuffix(scope.Scope, "/")
-		}
-		newScopes = append(newScopes, users.SourceScope{
-			Name:  source.Path, // backend name is path
-			Scope: scope.Scope,
-		})
+	// Check if file exists
+	stat, err := os.Stat(absolutePath)
+	if err != nil {
+		return "", fmt.Errorf("could not access file: %w", err)
 	}
-	return newScopes, nil
-}
 
-func ConvertToFrontendScopes(scopes []users.SourceScope) []users.SourceScope {
-	newScopes := []users.SourceScope{}
-	for _, scope := range scopes {
-		if source, ok := Config.Server.SourceMap[scope.Name]; ok {
-			// Replace scope.Name with source.Path while keeping the same Scope value
-			newScopes = append(newScopes, users.SourceScope{
-				Name:  source.Name,
-				Scope: scope.Scope,
-			})
+	// Check file size
+	if stat.Size() > maxSize {
+		return "", fmt.Errorf("file too large (%d bytes), maximum allowed is %d bytes", stat.Size(), maxSize)
+	}
+
+	// Validate file format
+	ext := strings.ToLower(filepath.Ext(absolutePath))
+	validFormat := false
+	for _, format := range allowedFormats {
+		if ext == format {
+			validFormat = true
+			break
 		}
 	}
-	return newScopes
-}
-
-func HasSourceByPath(scopes []users.SourceScope, sourcePath string) bool {
-	for _, scope := range scopes {
-		if scope.Name == sourcePath {
-			return true
-		}
+	if !validFormat {
+		return "", fmt.Errorf("unsupported format '%s', supported formats: %v", ext, allowedFormats)
 	}
-	return false
-}
 
-func GetScopeFromSourceName(scopes []users.SourceScope, sourceName string) (string, error) {
-	source, ok := Config.Server.NameToSource[sourceName]
-	if !ok {
-		slog.Debug("Could not get scope from source name: ", sourceName)
-		return "", fmt.Errorf("source with name not found %v", sourceName)
-	}
-	for _, scope := range scopes {
-		if scope.Name == source.Path {
-			return scope.Scope, nil
-		}
-	}
-	slog.Debug("scope not found for source %v", sourceName)
-	return "", fmt.Errorf("scope not found for source %v", sourceName)
-}
-
-func GetScopeFromSourcePath(scopes []users.SourceScope, sourcePath string) (string, error) {
-	for _, scope := range scopes {
-		if scope.Name == sourcePath {
-			return scope.Scope, nil
-		}
-	}
-	return "", fmt.Errorf("scope not found for source %v", sourcePath)
-}
-
-// assumes backend style scopes
-func GetSources(u *users.User) []string {
-	sources := []string{}
-
-	// preserves order of sources
-	for _, source := range Config.Server.Sources {
-		_, err := GetScopeFromSourcePath(u.Scopes, source.Path)
-		if err != nil {
-			slog.Warn("could not get scope for source %v: %v", source.Path, err)
-			continue
-		}
-		sources = append(sources, source.Name)
-	}
-	return sources
+	return absolutePath, nil
 }
 
 func loadCustomFavicon() {
+	const imageName = "favicon"
+	const maxSize = 1024 * 1024 // 1MB
+	allowedFormats := []string{".ico", ".png", ".svg"}
+
+	// Set default embedded favicon path
+	Env.FaviconEmbeddedPath = "img/icons/favicon.ico"
+
 	// Check if a custom favicon path is configured
 	if Config.Frontend.Favicon == "" {
-		slog.Debug("No custom favicon configured, using default")
+		Env.FaviconPath = Env.FaviconEmbeddedPath
+		Env.FaviconIsCustom = false
 		return
 	}
 
-	// Get absolute path for the favicon
-	faviconPath, err := filepath.Abs(Config.Frontend.Favicon)
+	// Validate custom favicon
+	validatedPath, err := validateCustomImage(Config.Frontend.Favicon, imageName, maxSize, allowedFormats)
 	if err != nil {
-		slog.Warn("Could not resolve favicon path '%v': %v", Config.Frontend.Favicon, err)
-		Config.Frontend.Favicon = "" // Unset invalid path
+		logger.Warningf("Custom favicon validation failed: %v, using default", err)
+		Config.Frontend.Favicon = ""
+		Env.FaviconPath = Env.FaviconEmbeddedPath
+		Env.FaviconIsCustom = false
 		return
 	}
 
-	// Check if the favicon file exists and get info
-	stat, err := os.Stat(faviconPath)
+	// Update to validated path and mark as custom
+	Config.Frontend.Favicon = validatedPath
+	Env.FaviconPath = validatedPath
+	Env.FaviconIsCustom = true
+	logger.Infof("Using custom favicon: %s", Env.FaviconPath)
+}
+
+func loadLoginIcon() {
+	const imageName = "login icon"
+	const maxSize = 1024 * 1024 // 1MB
+	allowedFormats := []string{".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico"}
+
+	// Set default embedded icon path based on dark mode preference
+	isDarkMode := Config.UserDefaults.DarkMode != nil && *Config.UserDefaults.DarkMode
+	if isDarkMode {
+		Env.LoginIconEmbeddedPath = "img/icons/favicon.svg" // Dark mode: dark background
+	} else {
+		Env.LoginIconEmbeddedPath = "img/icons/favicon-light.svg" // Light mode: light background
+	}
+
+	// Check if a custom login icon path is configured
+	if Config.Frontend.LoginIcon == "" {
+		Env.LoginIconPath = Env.LoginIconEmbeddedPath
+		Env.LoginIconIsCustom = false
+		return
+	}
+
+	// Validate custom login icon
+	validatedPath, err := validateCustomImage(Config.Frontend.LoginIcon, imageName, maxSize, allowedFormats)
 	if err != nil {
-		slog.Warn("Could not access custom favicon file '%v': %v", faviconPath, err)
-		Config.Frontend.Favicon = "" // Unset invalid path
+		logger.Warningf("Custom login icon validation failed: %v, using default", err)
+		Env.LoginIconPath = Env.LoginIconEmbeddedPath
+		Env.LoginIconIsCustom = false
 		return
 	}
 
-	// Check file size (limit to 1MB for security)
-	const maxFaviconSize = 1024 * 1024 // 1MB
-	if stat.Size() > maxFaviconSize {
-		slog.Warn("Favicon file '%v' is too large (%d bytes), maximum allowed is %d bytes", faviconPath, stat.Size(), maxFaviconSize)
-		Config.Frontend.Favicon = "" // Unset invalid path
-		return
-	}
-
-	// Validate file format based on extension
-	ext := strings.ToLower(filepath.Ext(faviconPath))
-	switch ext {
-	case ".ico", ".png", ".svg":
-		// Valid favicon formats
-	default:
-		slog.Warn("Unsupported favicon format '%v', supported formats: .ico, .png, .svg", ext)
-		Config.Frontend.Favicon = "" // Unset invalid path
-		return
-	}
-
-	// Update to absolute path and mark as valid
-	Config.Frontend.Favicon = faviconPath
-
-	slog.Info("Successfully validated custom favicon at '%v' (%d bytes, %s)", faviconPath, stat.Size(), ext)
+	// Update to validated path and mark as custom
+	Env.LoginIconPath = validatedPath
+	Env.LoginIconIsCustom = true
+	logger.Infof("Using custom login icon: %s", Env.LoginIconPath)
 }
 
 // setConditionalsMap builds optimized map structures from conditional rules for O(1) lookups
@@ -768,7 +706,7 @@ func setConditionals(config *Source) {
 
 	// backwards compatibility
 	if config.Config.Conditionals.Hidden {
-		slog.Warn("conditionals.hidden is deprecated, use conditionals.ignoreHidden instead")
+		logger.Warning("conditionals.hidden is deprecated, use conditionals.ignoreHidden instead")
 		config.Config.Conditionals.IgnoreHidden = true
 	}
 
@@ -840,11 +778,11 @@ func modifyExcludeInclude(config *Source) {
 		if checkExists {
 			realPath, err := filepath.Abs(config.Path + normalized)
 			if err != nil {
-				slog.Warn("could not get absolute path for %v: %v", normalized, err)
+				logger.Warningf("could not get absolute path for %v: %v", normalized, err)
 				return normalized
 			}
 			if _, err := os.Stat(realPath); os.IsNotExist(err) {
-				slog.Warn("configured exclude/include path %v does not exist", realPath)
+				logger.Warningf("configured exclude/include path %v does not exist", realPath)
 			}
 		}
 		return normalized

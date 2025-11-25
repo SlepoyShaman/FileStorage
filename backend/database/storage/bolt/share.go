@@ -5,10 +5,10 @@ import (
 
 	storm "github.com/asdine/storm/v3"
 	"github.com/asdine/storm/v3/q"
+	"github.com/gtsteffaniak/go-logger/logger"
 
 	"github.com/SlepoyShaman/FileStorage/backend/common/errors"
 	"github.com/SlepoyShaman/FileStorage/backend/database/share"
-	"github.com/gtsteffaniak/go-logger/logger"
 )
 
 type shareBackend struct {
