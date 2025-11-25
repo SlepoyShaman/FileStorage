@@ -34,7 +34,8 @@ import { globalVars, shareInfo } from "@/utils/constants";
 import { getTypeInfo } from "@/utils/mimetype";
 import { mutations, state, getters } from "@/store";
 
-const PLACEHOLDER_URL = globalVars.baseURL + "static/img/placeholder.png";
+// NEW: Define placeholder and error image URLs for easy configuration
+const PLACEHOLDER_URL = globalVars.baseURL + "static/img/placeholder.png"; // A generic loading placeholder
 const ERROR_URL = globalVars.baseURL + "static/img/placeholder.png";
 
 export default {
@@ -70,10 +71,11 @@ export default {
       classes: "",
       svgPath: "",
       previewTimeouts: [],
-      imageState: "loading", //'loading', 'loaded' или 'error'
-      imageTargetSrc: "", 
-      currentThumbnail: "",
-      color: "", 
+      // UPDATED: Manage image state directly
+      imageState: "loading", // Can be 'loading', 'loaded', or 'error'
+      imageTargetSrc: "", // This is now a data property
+      currentThumbnail: "", // Add currentThumbnail to data
+      color: "", // Add color to data
     };
   },
   computed: {
@@ -97,7 +99,7 @@ export default {
       if (simpleType === "image" && !state.user.preview?.image) {
         return false;
       }
-
+      // office files
       if ((simpleType === "document" || simpleType === "text") && !state.user.preview?.office) {
         return false;
       }
@@ -107,20 +109,20 @@ export default {
       return this.imageState !== 'error' && !this.disablePreviewExt && !this.officeFileDisabled
     },
     disablePreviewExt() {
-      const ext = "." + (this.filename.split(".").pop() || "").toLowerCase();
+      const ext = "." + (this.filename.split(".").pop() || "").toLowerCase(); // Ensure lowercase and dot
       // @ts-ignore
       return state.user?.disablePreviewExt?.includes(ext);
     },
     officeFileDisabled() {
-      const ext = "." + (this.filename.split(".").pop() || "").toLowerCase(); 
+      const ext = "." + (this.filename.split(".").pop() || "").toLowerCase(); // Ensure lowercase and dot
       // @ts-ignore
       return state.user?.disablePreviewExt?.includes(ext);
     },
     pdfConvertable() {
       if (!globalVars.muPdfAvailable) {
-        return false; 
+        return false; // If muPDF is not available
       }
-      const ext = "." + (this.filename.split(".").pop() || "").toLowerCase(); 
+      const ext = "." + (this.filename.split(".").pop() || "").toLowerCase(); // Ensure lowercase and dot
       const pdfConvertCompatibleFileExtensions = {
         ".pdf": true,
         ".xps": true,
@@ -139,12 +141,12 @@ export default {
       };
       return ext in pdfConvertCompatibleFileExtensions;
     },
-  
+    // NEW: A single computed property to determine the final image src
     imageDisplaySrc() {
       if (this.imageState === "error") {
         return ERROR_URL;
       }
-     
+      // Show placeholder only for the initial load, not during hover animations
       if (this.imageState === "loading") {
         return PLACEHOLDER_URL;
       }
@@ -170,6 +172,7 @@ export default {
     },
   },
   methods: {
+    // NEW: Centralized method to load any image and handle its state
     /**
      * @param {string} url
      */
@@ -183,12 +186,14 @@ export default {
       const targetImage = new Image();
 
       targetImage.onload = () => {
+        // Prevent race conditions: only update if this is the image we still want.
         if (this.imageTargetSrc === url) {
           this.imageState = "loaded";
         }
       };
 
       targetImage.onerror = () => {
+        // Prevent race conditions: only show an error if this is the image that failed.
         if (this.imageTargetSrc === url) {
           this.imageState = "error";
         }
@@ -220,18 +225,19 @@ export default {
           this.previewTimeouts = [];
           return;
         }
-      
+        // Set the thumbnail or popup preview
         if (state.user.preview.popup) {
           mutations.setPreviewSource(sequence[index]);
         } else {
           this.currentThumbnail = sequence[index];
         }
 
-        
+        // Preload the next image
         const nextIndex = (index + 1) % sequence.length;
         const preloadImg = new Image();
         preloadImg.src = sequence[nextIndex];
 
+        // Schedule next update
         index = nextIndex;
         const timeoutId = setTimeout(updateThumbnail, 750);
         // @ts-ignore
@@ -243,6 +249,7 @@ export default {
       this.previewTimeouts.forEach(clearTimeout);
       this.previewTimeouts = [];
       mutations.setPreviewSource("");
+      // UPDATED: Reset to the base thumbnail URL. The watcher will handle reloading it.
       this.updateImageTargetSrc();
     },
     getIconForType() {
@@ -265,13 +272,15 @@ export default {
     showLargeIcon() {
       this.updateImageTargetSrc();
     },
+    // UPDATED: Added a check for hasPreviewImage
     imageTargetSrc: {
       handler(newSrc) {
+        // ONLY trigger the image loader if the component is meant to show a preview.
         if (this.hasPreviewImage) {
           this.loadImage(newSrc);
         }
       },
-      immediate: true,
+      immediate: true, // Run this watcher on component mount
     },
   },
   mounted() {
@@ -317,7 +326,9 @@ export default {
 
 .icon {
   font-size: 1.5rem;
+  /* Default size */
   fill: currentColor;
+  /* Uses inherited color */
   border-radius: 0.2em;
   padding: 0.1em;
   background: var(--iconBackground);
