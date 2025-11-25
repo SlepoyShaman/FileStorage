@@ -64,35 +64,33 @@ export default {
     this.isTiff = this.checkIfTiff(this.src);
     if (this.isTiff) {
       this.decodeTiff(this.src);
+    } else {
+      this.$refs.imgex.src = this.src;  
     }
-    
-    this.$refs.imgex.src = this.src;
     
     let container = this.$refs.container;
     
     this.classList.forEach((className) => {
       container.classList.add(className);
-      container.classList.add(className + '-duplicate'); 
     });
     
     if (getComputedStyle(container).width === "0px") {
-      container.style.width = "200%"; 
+      container.style.width = "100%";
     }
     if (getComputedStyle(container).height === "0px") {
-      container.style.height = "200%"; 
+      container.style.height = "100%";
     }
     
-
     window.addEventListener("resize", this.onResize);
-    window.addEventListener("resize", this.onResize); 
-    document.addEventListener("click", this.onResize); 
+    document.addEventListener("click", this.onResize);
   },
   beforeUnmount() {
     window.removeEventListener("resize", this.onResize);
+    window.removeEventListener("click", this.onResize);
   },
   computed: {
     isLoaded() {
-      return ("preview-img" in state.loading); 
+      return ("preview-img" in state.loading);
     },
   },
   watch: {
@@ -105,18 +103,15 @@ export default {
       this.isTiff = this.checkIfTiff(this.src);
       if (this.isTiff) {
         this.decodeTiff(this.src);
+      } else {
+        this.$refs.imgex.src = this.src;  
       }
-      
-      this.$refs.imgex.src = this.src;
       
       this.scale = 1;
       this.position.relative = { x: 0, y: 0 };
-      this.position.absolute = { x: 100, y: 100 };
       this.showSpinner = true;
       this.resetSwipeTracking();
       
-      
-      this.resetSwipeTracking(); 
     },
   },
   methods: {
