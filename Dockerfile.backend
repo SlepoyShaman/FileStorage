@@ -2,11 +2,12 @@ FROM golang:1.21-alpine
 
 WORKDIR /app/backend
 
-COPY backend/ ./
-
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-RUN CGO_ENABLED=1 GOOS=windows go build -o main.exe .
+COPY backend/ ./
+
+RUN CGO_ENABLED=1 GOOS=linux go build -o main.exe .
 
 EXPOSE 8080
 EXPOSE 3000
