@@ -8,8 +8,27 @@ import (
 )
 
 func (s *Storage) CheckChildItemAccess(response *iteminfo.ExtendedFileInfo, index *indexing.Index, username string) error {
+	parentPath := index.MakeIndexPath(response.Path)
 
-	// Collect all item names to check
+	// Проверка наличия хотя бы одного доступного элемента
+	if !s.hasAnyAccessibleItems(response, index.Path, parentPath, username) {
+		return errors.ErrAccessDenied
+	}
+
+	// Фильтрация элементов по правам доступа
+	s.filterItemsByAccess(response, index.Path, parentPath, username)
+
+	return nil
+}
+
+// Выделенный метод: проверка наличия доступных элементов
+func (s *Storage) hasAnyAccessibleItems(response *iteminfo.ExtendedFileInfo, basePath, parentPath, username string) bool {
+	allItemNames := s.collectAllItemNames(response)
+	return s.HasAnyVisibleItems(basePath, parentPath, allItemNames, username)
+}
+
+// Выделенный метод: сбор всех имен элементов
+func (s *Storage) collectAllItemNames(response *iteminfo.ExtendedFileInfo) []string {
 	allItemNames := make([]string, 0, len(response.Folders)+len(response.Files))
 	for _, folder := range response.Folders {
 		allItemNames = append(allItemNames, folder.Name)
@@ -17,40 +36,32 @@ func (s *Storage) CheckChildItemAccess(response *iteminfo.ExtendedFileInfo, inde
 	for _, file := range response.Files {
 		allItemNames = append(allItemNames, file.Name)
 	}
+	return allItemNames
+}
 
-	// Use standardized path with trailing slash for proper path construction
-	parentPath := index.MakeIndexPath(response.Path)
-
-	// Check if user has access to any items
-	if !s.HasAnyVisibleItems(index.Path, parentPath, allItemNames, username) {
-		return errors.ErrAccessDenied
-	}
-
-	// Save original folders and files before filtering
+// Выделенный метод: фильтрация элементов по правам доступа
+func (s *Storage) filterItemsByAccess(response *iteminfo.ExtendedFileInfo, basePath, parentPath, username string) {
+	// Сохраняем оригинальные данные перед фильтрацией
 	originalFolders := response.Folders
 	originalFiles := response.Files
 
-	// Filter and return only the items the user has access to
-	response.Folders = make([]iteminfo.ItemInfo, 0)
-	response.Files = make([]iteminfo.ItemInfo, 0)
+	// Сбрасываем и фильтруем элементы
+	response.Folders = s.filterItems(originalFolders, basePath, parentPath, username)
+	response.Files = s.filterItems(originalFiles, basePath, parentPath, username)
+}
 
-	// Check each subfolder for access permissions
-	for _, folder := range originalFolders {
-		indexPath := parentPath + folder.Name
-		if s.Permitted(index.Path, indexPath, username) {
-			response.Folders = append(response.Folders, folder)
+// Выделенный метод: универсальная фильтрация элементов
+func (s *Storage) filterItems(items []iteminfo.ItemInfo, basePath, parentPath, username string) []iteminfo.ItemInfo {
+	filtered := make([]iteminfo.ItemInfo, 0, len(items))
+
+	for _, item := range items {
+		indexPath := parentPath + item.Name
+		if s.Permitted(basePath, indexPath, username) {
+			filtered = append(filtered, item)
 		}
 	}
 
-	// Check each subfile for access permissions
-	for _, file := range originalFiles {
-		indexPath := parentPath + file.Name
-		if s.Permitted(index.Path, indexPath, username) {
-			response.Files = append(response.Files, file)
-		}
-	}
-
-	return nil
+	return filtered
 }
 
 type FileOptionsExtended struct {
