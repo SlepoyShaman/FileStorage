@@ -1,0 +1,67 @@
+@media (max-width: 800px) {
+  #listingView .header .name,
+  #listingView.list .item .name,
+  #listingView.compact .item .name {
+    width: 50%;
+  }
+
+  #listingView.list .item div:last-of-type{
+    display:block;
+    width:100%;
+  }
+
+  body {
+    padding-bottom: 5em;
+  }
+
+  #listingView.list .item .name {
+    width: 60%;
+  }
+
+  #more {
+    display: inherit
+  }
+
+  body.rtl #dropdown {
+    right: unset;
+    left: 1em;
+    transform-origin: top left;
+  }
+
+  header img {
+    display: none;
+  }
+
+  #listingView {
+    margin-bottom: 5em;
+  }
+  #listingView .item {
+    width: 100%
+  }
+  body.rtl #listingView {
+    margin-right: unset;
+  }
+
+
+  body.rtl #nav .wrapper {
+    margin-right: unset;
+  }
+
+  body.rtl .dashboard .row {
+    margin-right: unset;
+  }
+
+}
+
+
+@media (max-width: 450px) {
+
+  #listingView.list .item .name {
+    width: 100%;
+  }
+}
+
+/* Mobile Specific Styles */
+.mobile-only {
+  display: none !important;
+}

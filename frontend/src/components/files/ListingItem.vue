@@ -75,7 +75,7 @@ import downloadFiles from "@/utils/download";
 import { getHumanReadableFilesize } from "@/utils/filesizes";
 import { filesApi,publicApi } from "@/api";
 import * as upload from "@/utils/upload";
-import { state, getters, mutations } from "@/store";
+import { state, getters, mutations } from "@/store"; // Import your custom store
 import { url } from "@/utils";
 import Icon from "@/components/files/Icon.vue";
 
@@ -165,6 +165,7 @@ export default {
           return false;
         }
 
+        // Also check if we're trying to drop an item onto itself
         // @ts-ignore
         if (state.req.items[i].index === this.index) {
           return false;
@@ -188,10 +189,11 @@ export default {
     },
   },
   mounted() {
+    // Prevent default navigation for left-clicks
     const observer = new IntersectionObserver(this.handleIntersect, {
       root: null,
       rootMargin: "0px",
-      threshold: 0.1,
+      threshold: 0.1, // Adjust threshold as needed
     });
 
     observer.observe(this.$el);
@@ -212,11 +214,12 @@ export default {
       const touch = event.touches[0];
       const deltaX = Math.abs(touch.clientX - this.touchStartX);
       const deltaY = Math.abs(touch.clientY - this.touchStartY);
-      const movementThreshold = 10;
+      // Set a threshold for movement to detect a swipe
+      const movementThreshold = 10; // Adjust as needed
       if (deltaX > movementThreshold || deltaY > movementThreshold) {
         this.isSwipe = true;
         // @ts-ignore
-        this.cancelContext();
+        this.cancelContext(); // Cancel long press if swipe is detected
       }
     },
     handleTouchEnd() {
@@ -234,6 +237,7 @@ export default {
     },
     /** @param {string} path */
     updateHashAndNavigate(path) {
+      // Update hash in the browser without full page reload
       window.location.hash = path;
     },
     getUrl() {
@@ -247,7 +251,8 @@ export default {
     },
     /** @param {MouseEvent} event */
     onRightClick(event) {
-      event.preventDefault();
+      event.preventDefault(); // Prevent default context menu
+      // If one or fewer items are selected, reset the selection
       if (!state.multiple && getters.selectedCount() < 2) {
         mutations.resetSelected();
         // @ts-ignore
@@ -311,6 +316,7 @@ export default {
     dragOver(event) {
       if (!this.canDrop) return;
 
+      // Only allow internal drags (from filebrowser items), not external files from desktop
       const isInternal = Array.from(event.dataTransfer.types).includes(
         "application/x-filebrowser-internal-drag"
       );
@@ -324,14 +330,17 @@ export default {
     async drop(event) {
       this.isDraggedOver = false;
 
+      // Only allow internal drags (from filebrowser items), not external files from desktop
       const isInternal = Array.from(event.dataTransfer.types).includes(
         "application/x-filebrowser-internal-drag"
       );
 
       if (!isInternal) {
+        // Don't handle external drags - let the parent ListingView handle them
         return;
       }
 
+      // Only stop propagation if we're actually going to handle this drop (moving files into a folder)
       event.preventDefault();
       event.stopPropagation();
 
@@ -348,14 +357,19 @@ export default {
         });
       }
 
+      // Filter out items being dropped onto themselves or into their own subdirectories
       items = items.filter(item => {
+        // Skip if source and destination are the same
         if (item.from === item.to) {
           return false;
         }
 
+        // Skip if trying to move a directory into itself
+        // Check if the destination path would be within the source path
         const fromPath = item.from;
         const destinationDir = this.path;
 
+        // If destination dir is the same as or contains the source path, skip
         if (fromPath === destinationDir || fromPath.startsWith(destinationDir + '/')) {
           return false;
         }
@@ -363,6 +377,7 @@ export default {
         return true;
       });
 
+      // If all items were filtered out, silently skip the operation
       if (items.length === 0) {
         return;
       }
@@ -382,6 +397,7 @@ export default {
        * @param {boolean} rename
        */
       let action = async (overwrite, rename) => {
+        // Show move prompt with operation in progress
         mutations.showHover({
           name: "move",
           props: {
@@ -395,8 +411,10 @@ export default {
           } else {
             await filesApi.moveCopy(items, "move", overwrite, rename);
           }
+          // Close the prompt after successful operation
           mutations.closeHovers();
         } catch (error) {
+          // Close the prompt and let error handling continue
           mutations.closeHovers();
           throw error;
         }
@@ -434,14 +452,16 @@ export default {
       const touch = event.touches[0];
       this.touchStartX = touch.clientX;
       this.touchStartY = touch.clientY;
-      this.isLongPress = false; 
-      this.isSwipe = false; 
+      this.isLongPress = false; // Reset state
+      this.isSwipe = false; // Reset swipe detection
       if (state.multiple) {
         return;
       }
       // @ts-ignore
       this.contextTimeout = setTimeout(() => {
         if (!this.isSwipe) {
+          // Only reset selection if this item is not already selected
+          // This prevents resetting selection when trying to open context menu on selected item
           if (!this.isSelected) {
             mutations.resetSelected();
             // @ts-ignore
@@ -507,6 +527,7 @@ export default {
           return;
         }
 
+        // In multiple selection mode, clicking an already selected item should deselect it
         if (state.multiple) {
           mutations.removeSelected(this.index);
           mutations.setLastSelectedIndex(this.index);
@@ -557,7 +578,7 @@ export default {
 }
 
 .item {
-  -webkit-touch-callout: none; 
+  -webkit-touch-callout: none; /* Disable the default long press preview */
 }
 
 .hiddenFile {
