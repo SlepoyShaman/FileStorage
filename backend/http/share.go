@@ -439,17 +439,13 @@ func shareDirectDownloadHandler(w http.ResponseWriter, r *http.Request, d *reque
 
 func getShareURL(r *http.Request, hash string, isDirectDownload bool) string {
 	var shareURL string
-
 	if config.Server.ExternalUrl != "" {
-		if isDirectDownload == true {
+		if isDirectDownload {
 			shareURL = fmt.Sprintf("%s%spublic/api/raw?hash=%s", config.Server.ExternalUrl, config.Server.BaseURL, hash)
 		} else {
-			if hash != "" {
-				shareURL = fmt.Sprintf("%s%spublic/share/%s", config.Server.ExternalUrl, config.Server.BaseURL, hash)
-			} else {
-				shareURL = fmt.Sprintf("%s%spublic/share/", config.Server.ExternalUrl, config.Server.BaseURL)
-			}
+			shareURL = fmt.Sprintf("%s%spublic/share/%s", config.Server.ExternalUrl, config.Server.BaseURL, hash)
 		}
+
 	} else {
 		var host string
 		var scheme string
@@ -464,14 +460,12 @@ func getShareURL(r *http.Request, hash string, isDirectDownload bool) string {
 			host = r.Host
 			scheme = getScheme(r)
 		}
-
 		if isDirectDownload {
 			shareURL = fmt.Sprintf("%s://%s%spublic/api/raw?hash=%s", scheme, host, config.Server.BaseURL, hash)
 		} else {
 			shareURL = fmt.Sprintf("%s://%s%spublic/share/%s", scheme, host, config.Server.BaseURL, hash)
 		}
 	}
-
 	return shareURL
 }
 
