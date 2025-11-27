@@ -440,27 +440,25 @@ func shareDirectDownloadHandler(w http.ResponseWriter, r *http.Request, d *reque
 func getShareURL(r *http.Request, hash string, isDirectDownload bool) string {
 	var shareURL string
 
-	if config.Server.ExternalUrl != "" && len(config.Server.ExternalUrl) > 0 {
+	if config.Server.ExternalUrl != "" {
 		basePath := config.Server.BaseURL
 		if isDirectDownload == true {
-			shareURL = config.Server.ExternalUrl + basePath + "public/api/raw?" + "hash=" + hash
+			shareURL = fmt.Sprintf("%s%spublic/api/raw?hash=%s", config.Server.ExternalUrl, config.Server.BaseURL, hash)
 		} else {
 			if hash != "" {
-				shareURL = config.Server.ExternalUrl + basePath + "public/share/" + hash
+				shareURL = fmt.Sprintf("%s%spublic/share/%s", config.Server.ExternalUrl, config.Server.BaseURL, hash)
 			} else {
-				shareURL = config.Server.ExternalUrl + basePath + "public/share/unknown"
+				shareURL = fmt.Sprintf("%s%spublic/share/", config.Server.ExternalUrl, config.Server.BaseURL)
 			}
 		}
 	} else {
 		host := r.Host
 		scheme := getScheme(r)
 
-		forwardedHosts := r.Header.Values("X-Forwarded-Host")
-		if len(forwardedHosts) > 0 {
-			host = forwardedHosts[0]
-			forwardedProtos := r.Header.Values("X-Forwarded-Proto")
-			if len(forwardedProtos) > 0 {
-				scheme = forwardedProtos[0]
+		if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+			host = forwardedHost
+			if forwardedProto := r.Header.Get("X-Forwarded-Proto"); forwardedProto != "" {
+				scheme = forwardedProto
 			} else {
 				if strings.Contains(host, "localhost") {
 					scheme = "http"
@@ -471,9 +469,9 @@ func getShareURL(r *http.Request, hash string, isDirectDownload bool) string {
 		}
 
 		if isDirectDownload {
-			shareURL = scheme + "://" + host + config.Server.BaseURL + "public/api/raw?hash=" + hash
+			shareURL = fmt.Sprintf("%s://%s%spublic/api/raw?hash=%s", scheme, host, config.Server.BaseURL, hash)
 		} else {
-			shareURL = scheme + "://" + host + config.Server.BaseURL + "public/share/" + hash
+			shareURL = fmt.Sprintf("%s://%s%spublic/share/%s", scheme, host, config.Server.BaseURL, hash)
 		}
 	}
 
