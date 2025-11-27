@@ -441,7 +441,6 @@ func getShareURL(r *http.Request, hash string, isDirectDownload bool) string {
 	var shareURL string
 
 	if config.Server.ExternalUrl != "" {
-		basePath := config.Server.BaseURL
 		if isDirectDownload == true {
 			shareURL = fmt.Sprintf("%s%spublic/api/raw?hash=%s", config.Server.ExternalUrl, config.Server.BaseURL, hash)
 		} else {
@@ -452,20 +451,18 @@ func getShareURL(r *http.Request, hash string, isDirectDownload bool) string {
 			}
 		}
 	} else {
-		host := r.Host
-		scheme := getScheme(r)
-
+		var host string
+		var scheme string
 		if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
 			host = forwardedHost
 			if forwardedProto := r.Header.Get("X-Forwarded-Proto"); forwardedProto != "" {
 				scheme = forwardedProto
 			} else {
-				if strings.Contains(host, "localhost") {
-					scheme = "http"
-				} else {
-					scheme = "https"
-				}
+				scheme = "https"
 			}
+		} else {
+			host = r.Host
+			scheme = getScheme(r)
 		}
 
 		if isDirectDownload {
