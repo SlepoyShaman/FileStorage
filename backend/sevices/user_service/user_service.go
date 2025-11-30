@@ -1,14 +1,21 @@
 package user_service
 
-import "github.com/SlepoyShaman/FileStorage/services/password_hash"
+import (
+	"os"
+
+	"github.com/SlepoyShaman/FileStorage/services/password_hash"
+)
 
 // UserService Сервис, который использует стратегию хеширования
 type UserService struct {
 	hasher password_hash.PasswordHasher
 }
 
-func NewUserService(hasher password_hash.PasswordHasher) *UserService {
-	return &UserService{hasher: hasher}
+func NewUserService() *UserService {
+	return &UserService{
+		// Конкретная реализация выбрана здесь один раз и навсегда
+		hasher: password_hash.NewBcryptHasher(os.Getenv("default_hash_cost")),
+	}
 }
 
 func (s *UserService) SetPassword(user *User, plainPassword string) error {
