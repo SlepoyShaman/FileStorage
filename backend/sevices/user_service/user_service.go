@@ -1,11 +1,13 @@
 package user_service
 
+import "github.com/SlepoyShaman/FileStorage/services/password_hash"
+
 // UserService Сервис, который использует стратегию хеширования
 type UserService struct {
-	hasher PasswordHasher
+	hasher password_hash.PasswordHasher
 }
 
-func NewUserService(hasher PasswordHasher) *UserService {
+func NewUserService(hasher password_hash.PasswordHasher) *UserService {
 	return &UserService{hasher: hasher}
 }
 
