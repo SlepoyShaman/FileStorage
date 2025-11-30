@@ -7,49 +7,15 @@ import (
 	"time"
 )
 
-// MetadataExtractor интерфейс стратегии
-type MetadataExtractor interface {
-	CanHandle(fileType string) bool
-	Extract(ctx context.Context, fileItem *File, realPath string, opts *Options) error
-}
-
-// AudioExtractor стратегия для аудио файлов
-type AudioExtractor struct{}
-
-func (e *AudioExtractor) CanHandle(fileType string) bool {
-	return strings.HasPrefix(fileType, "audio")
-}
-
-func (e *AudioExtractor) Extract(ctx context.Context, fileItem *File, realPath string, opts *Options) error {
+func handleAudioMetadata(ctx context.Context, fileItem *File, realPath string, opts *Options) error {
 	return extractAudioMetadata(ctx, fileItem, realPath, opts.AlbumArt || opts.Content, opts.Metadata)
 }
 
-// VideoExtractor стратегия для видео файлов
-type VideoExtractor struct{}
-
-func (e *VideoExtractor) CanHandle(fileType string) bool {
-	return strings.HasPrefix(fileType, "video")
-}
-
-func (e *VideoExtractor) Extract(ctx context.Context, fileItem *File, realPath string, opts *Options) error {
+func handleVideoMetadata(ctx context.Context, fileItem *File, realPath string, opts *Options) error {
 	return extractVideoMetadata(ctx, fileItem, realPath)
 }
 
-// MetadataProcessor контекст, использующий стратегии
-type MetadataProcessor struct {
-	extractors []MetadataExtractor
-}
-
-func NewMetadataProcessor() *MetadataProcessor {
-	return &MetadataProcessor{
-		extractors: []MetadataExtractor{
-			&AudioExtractor{},
-			&VideoExtractor{},
-		},
-	}
-}
-
-func (p *MetadataProcessor) ProcessFiles(response *Response, opts *Options) int {
+func processMetadata(response *Response, opts *Options) int {
 	if !opts.Metadata {
 		return 0
 	}
@@ -68,17 +34,23 @@ func (p *MetadataProcessor) ProcessFiles(response *Response, opts *Options) int 
 			continue
 		}
 
-		// Применяем подходящую стратегию
-		for _, extractor := range p.extractors {
-			if extractor.CanHandle(fileItem.Type) {
-				err := extractor.Extract(ctx, fileItem, itemRealPath, opts)
-				if err != nil {
-					slog.Debug("failed to extract metadata for file: "+fileItem.Name, err)
-				} else {
-					metadataCount++
-				}
-				break // Обрабатываем только первым подходящим экстрактором
-			}
+		isAudio := strings.HasPrefix(fileItem.Type, "audio")
+		isVideo := strings.HasPrefix(fileItem.Type, "video")
+
+		var extractErr error
+		switch {
+		case isAudio:
+			extractErr = handleAudioMetadata(ctx, fileItem, itemRealPath, opts)
+		case isVideo:
+			extractErr = handleVideoMetadata(ctx, fileItem, itemRealPath, opts)
+		default:
+			continue
+		}
+
+		if extractErr != nil {
+			slog.Debug("failed to extract metadata for file: "+fileItem.Name, extractErr)
+		} else if isAudio || isVideo {
+			metadataCount++
 		}
 	}
 
