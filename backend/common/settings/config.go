@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/SlepoyShaman/FileStorage/adapters/fs/fileutils"
+	"github.com/SlepoyShaman/FileStorage/backend/database/users"
 	"github.com/SlepoyShaman/FileStorage/common/utils"
 	"github.com/go-playground/validator/v10"
 	"github.com/goccy/go-yaml"
-	"github.com/gtsteffaniak/filebrowser/backend/database/users"
 	"github.com/gtsteffaniak/go-logger/logger"
 )
 

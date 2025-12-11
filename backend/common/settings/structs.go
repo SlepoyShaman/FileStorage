@@ -1,6 +1,6 @@
 package settings
 
-import "github.com/gtsteffaniak/filebrowser/backend/database/users"
+import "github.com/SlepoyShaman/FileStorage/backend/database/users"
 
 type AllowedMethods string
 
